@@ -31,13 +31,15 @@ The program shows a menu and reads one choice per line from standard input:
 | 4. Remove task | Task ID | Deletes the task. Prints `Task Not Found` for an unknown ID. |
 | 5. Exit | — | Quits the program. |
 
+The program also exits when standard input ends (Ctrl-D, or piped input running out) at any prompt, so it can be scripted, for example `printf '1\nLearn Rust\n2\n' | cargo run`.
+
 An ID that is not a non-negative integer gets `Please enter a valid task ID.`, and any other menu input gets `Invalid option`.
 
 ### Project layout
 
 | File | Contents |
 | --- | --- |
-| `src/main.rs` | The menu loop and input handling (`read_task_id`). |
+| `src/main.rs` | The menu loop and input handling (`read_line`, `read_task_id`). |
 | `src/task_manager.rs` | The `Task` and `TaskManager` types and their unit tests. |
 
 ### Data model
@@ -73,8 +75,8 @@ This project is a compact tour of several core Rust ideas:
 - **`impl` blocks and associated functions.** `TaskManager::new()` is a constructor-style associated function that returns `Self`. The other methods take `self` by reference.
 - **Borrowing: `&self` vs `&mut self`.** `list` only reads, so it takes `&self`. `add`, `complete` and `remove` change state, so they take `&mut self`. The borrow checker therefore lets `main` call them only through the mutable binding `let mut manager`.
 - **Ownership transfer.** `add` takes `title: String` by value, so the caller's string moves into the new `Task` and is not copied. `main` builds it with `title.trim().to_string()`, which turns a borrowed `&str` slice into an owned `String`.
-- **`Option<T>` instead of sentinel values.** `read_task_id` returns `Option<u32>`: `Some(id)` on a valid parse, `None` otherwise. The caller has to handle both cases with `match`.
-- **`Result<T, E>` and parsing.** `str::parse::<u32>()` returns a `Result`, which is matched and converted into an `Option`. Negative numbers, letters and values above `u32::MAX` all become `None`.
+- **`Option<T>` instead of sentinel values.** `read_line` returns `Option<String>`, with `None` meaning input has ended. `read_task_id` returns `Option<Option<u32>>`: the outer `None` means end of input, `Some(None)` means the line was not a valid ID. The caller has to handle all three cases with `match`, and `let Some(input) = read_line() else { break };` (a `let`-`else` statement) leaves the loop on end of input.
+- **`Result<T, E>` and parsing.** `read_line` matches on `io::stdin().read_line(...)`, treating `Ok(0)` as end of input and `Err` as a reported failure instead of panicking. `str::parse::<u32>()` returns a `Result` that `.ok()` turns into an `Option`, so negative numbers, letters and values above `u32::MAX` all become `None`.
 - **Checked arithmetic.** `next_id.checked_add(1)` returns `None` on overflow instead of wrapping around silently (as release builds would do with a plain `+`).
 - **Iterators and closures.** `complete` walks `iter_mut()` to change a task in place. `remove` uses `iter().position(|x| x.id == id)` to find an index with a closure, then `Vec::remove`, which keeps the remaining tasks in order.
 - **Exhaustive `match`.** The menu dispatches on `input.trim()` with a `_` catch-all arm, and `list` matches on the `bool` `completed`.
@@ -121,8 +123,7 @@ The tests cover `TaskManager`'s logic only. The interactive menu in `main.rs` an
 ## Limitations
 
 - **No persistence.** Tasks live only in memory and are lost when the program exits.
-- **End of input causes a busy loop.** If standard input closes (Ctrl-D, or piped input that runs out), `read_line` returns an empty string. The menu then prints `Invalid option` over and over at full speed instead of exiting. Use option `5` to quit.
-- **Panics on unreadable input.** A failed read, including input that is not valid UTF-8, panics through `.expect("Failed to read input")` instead of showing an error and continuing.
+- **Unreadable input ends the session.** A failed read, such as input that is not valid UTF-8, prints `Failed to read input: ...` to stderr and exits rather than letting you retry. (End of input, from Ctrl-D or piped input running out, also exits cleanly.)
 - **Empty titles are accepted.** A blank line at the title prompt creates a task with an empty title. There is also no length limit.
 - **Finite ID space.** IDs are `u32` and never reused. Because the overflow check runs before insertion, ID `u32::MAX` itself is never issued, so the program can create at most 4,294,967,295 tasks over one run before `add` panics.
 - **Linear-time lookups.** `complete` and `remove` scan the whole `Vec`, and `remove` shifts every later element. That is fine at interactive scale, but a `HashMap<u32, Task>` or `BTreeMap` would suit very large lists better.
