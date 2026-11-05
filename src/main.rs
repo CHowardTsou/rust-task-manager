@@ -2,17 +2,28 @@ mod task_manager;
 use std::io;
 use task_manager::TaskManager;
 
-fn read_task_id() -> Option<u32> {
+/// Reads one line from stdin.
+///
+/// Returns `None` when stdin has reached end of input or a read fails
+/// (for example, on input that is not valid UTF-8), so callers can stop
+/// instead of looping on empty input or panicking.
+fn read_line() -> Option<String> {
     let mut input = String::new();
 
-    io::stdin()
-        .read_line(&mut input)
-        .expect("Failed to read input");
-
-    match input.trim().parse::<u32>() {
-        Ok(id) => Some(id),
-        Err(_) => None,
+    match io::stdin().read_line(&mut input) {
+        Ok(0) => None,
+        Ok(_) => Some(input),
+        Err(err) => {
+            eprintln!("Failed to read input: {err}");
+            None
+        }
     }
+}
+
+/// Reads a task ID. The outer `Option` is `None` when input has ended;
+/// the inner one is `None` when the line is not a valid ID.
+fn read_task_id() -> Option<Option<u32>> {
+    read_line().map(|input| input.trim().parse::<u32>().ok())
 }
 
 fn main() {
@@ -26,54 +37,45 @@ fn main() {
         println!("4. Remove task");
         println!("5. Exit");
 
-        let mut input = String::new();
-
-        // TODO: Read the user's choice.
-        io::stdin()
-            .read_line(&mut input)
-            .expect("Failed to read input");
+        let Some(input) = read_line() else { break };
 
         match input.trim() {
             "1" => {
-                // TODO: Read title and call manager.add()
                 println!("Enter task title.");
-                let mut title = String::new();
-                io::stdin()
-                    .read_line(&mut title)
-                    .expect("Failed to read input");
+                let Some(title) = read_line() else { break };
 
                 manager.add(title.trim().to_string());
                 println!("Task added successfully!");
             }
             "2" => manager.list(),
             "3" => {
-                // TODO: Read task ID and call manager.complete()
                 println!("Enter task ID to complete");
 
                 match read_task_id() {
-                    Some(id) => {
+                    None => break,
+                    Some(Some(id)) => {
                         if manager.complete(id) {
                             println!("Task completed successfully!");
                         } else {
                             println!("Task Not Found");
                         }
                     }
-                    None => println!("Please enter a valid task ID."),
+                    Some(None) => println!("Please enter a valid task ID."),
                 }
             }
             "4" => {
-                // TODO: Read task ID and call manager.remove()
                 println!("Enter task ID to remove");
 
                 match read_task_id() {
-                    Some(id) => {
+                    None => break,
+                    Some(Some(id)) => {
                         if manager.remove(id) {
                             println!("Task removed successfully!");
                         } else {
                             println!("Task Not Found");
                         }
                     }
-                    None => println!("Please enter a valid task ID."),
+                    Some(None) => println!("Please enter a valid task ID."),
                 }
             }
             "5" => break,
